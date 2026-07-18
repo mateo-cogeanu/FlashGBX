@@ -1432,6 +1432,8 @@ class FlashGBX_GUI(QtWidgets.QMainWindow):
 					self.lblDevice.setText(dev.GetFullNameLabel() + " [" + __("Legacy Mode") + "]")
 				else:
 					self.lblDevice.setText(dev.GetFullNameLabel())
+				if hasattr(self, "playback_shell"):
+					self.playback_shell.update_cartridge(self.CONN.INFO, self.CONN.GetMode(), self.CONN.GetFullName())
 				print("\n" + __("Connected to {device_name}", device_name=dev.GetFullNameExtended(more=True)))
 				self.grpActions.setEnabled(True)
 				self.mnuTools.setEnabled(True)
@@ -1518,6 +1520,36 @@ class FlashGBX_GUI(QtWidgets.QMainWindow):
 				return True
 
 			return False
+
+	def SelectPlatformForPlay(self, auto_play=True):
+		"""Safely choose cartridge voltage before reading from the Play page."""
+		if not self.CheckDeviceAlive(): return False
+		msgbox = QtWidgets.QMessageBox(parent=self)
+		msgbox.setIcon(QtWidgets.QMessageBox.Question)
+		msgbox.setWindowTitle("Choose cartridge platform")
+		msgbox.setText("Which cartridge is inserted?\n\nChoosing the wrong platform can damage a Game Boy Advance cartridge, so check the label and shape before continuing.")
+		button_dmg = msgbox.addButton("Game Boy / Color (5 V)", QtWidgets.QMessageBox.AcceptRole)
+		button_agb = msgbox.addButton("Game Boy Advance (3.3 V)", QtWidgets.QMessageBox.AcceptRole)
+		button_cancel = msgbox.addButton(QtWidgets.QMessageBox.Cancel)
+		msgbox.setDefaultButton(button_agb)
+		msgbox.setEscapeButton(button_cancel)
+		msgbox.exec()
+		clicked = msgbox.clickedButton()
+		if clicked not in (button_dmg, button_agb):
+			self.STATUS.pop("autoplay_after_connect", None)
+			self.STATUS.pop("autoplay_after_refresh", None)
+			return False
+		if auto_play:
+			self.STATUS["autoplay_after_connect"] = True
+		else:
+			self.STATUS.pop("autoplay_after_connect", None)
+			self.STATUS.pop("autoplay_after_refresh", None)
+		if clicked == button_dmg:
+			self.optDMG.setChecked(True)
+		else:
+			self.optAGB.setChecked(True)
+		self.SetMode()
+		return True
 
 	def FindDevices(self, connectToFirst=False, port=None, mode=None, firstRun=False):
 		if self.CONN is not None:

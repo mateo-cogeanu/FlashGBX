@@ -141,7 +141,7 @@ class PlaybackShell(QtWidgets.QWidget):
 		self.refresh_button.setObjectName("quietButton")
 		self.refresh_button.setCursor(QtCore.Qt.PointingHandCursor)
 		# clicked(bool) must not feed False into ReadCartridge(resetStatus=True).
-		self.refresh_button.clicked.connect(lambda _checked=False: self.host.ReadCartridge())
+		self.refresh_button.clicked.connect(lambda _checked=False: self._refresh_action())
 		copy.addWidget(self.refresh_button)
 		copy.addStretch()
 		card_layout.addLayout(copy, 1)
@@ -162,11 +162,23 @@ class PlaybackShell(QtWidgets.QWidget):
 		if getattr(self.host, "CONN", None) is None:
 			self.host.STATUS["autoplay_after_connect"] = True
 			self.host.ConnectDevice()
+			if getattr(self.host, "CONN", None) is not None and self.host.CONN.GetMode() not in ("DMG", "AGB"):
+				self.host.SelectPlatformForPlay(auto_play=True)
+		elif self.host.CONN.GetMode() not in ("DMG", "AGB"):
+			self.host.SelectPlatformForPlay(auto_play=True)
 		elif not self.host.CONN.INFO or self.host.CONN.INFO.get("empty", True):
 			self.host.STATUS["autoplay_after_refresh"] = True
 			self.host.ReadCartridge()
 		else:
 			self.host.PlayCartridge()
+
+	def _refresh_action(self):
+		if getattr(self.host, "CONN", None) is None:
+			self.host.ConnectDevice()
+		elif self.host.CONN.GetMode() not in ("DMG", "AGB"):
+			self.host.SelectPlatformForPlay(auto_play=False)
+		else:
+			self.host.ReadCartridge()
 
 	def show_data(self):
 		self._select_page(1)
@@ -186,6 +198,14 @@ class PlaybackShell(QtWidgets.QWidget):
 			self.title_label.setText("Connect your cartridge reader")
 			self.subtitle_label.setText("FlashGBX supports GBxCart RW, GBFlash, Joey Jr and Game Bub.")
 			self.play_button.setText("Connect reader and play  →")
+			self.play_button.setEnabled(True)
+			return
+		if mode not in ("DMG", "AGB"):
+			self.state_label.setText("READER CONNECTED")
+			self.title_label.setText("Choose your cartridge platform")
+			self.subtitle_label.setText("Select Game Boy / Color or Game Boy Advance so the reader uses the correct voltage.")
+			self.platform_chip.setText("PLATFORM REQUIRED")
+			self.play_button.setText("Choose platform and play  →")
 			self.play_button.setEnabled(True)
 			return
 		if empty:
