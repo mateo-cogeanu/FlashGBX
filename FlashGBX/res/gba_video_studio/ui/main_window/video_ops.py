@@ -449,7 +449,7 @@ def export_video(main_window):
 
     _warn = _estimate_size_warning(main_window)
     if _warn:
-        from ui.qt_compat import QDialog, QVBoxLayout, QLabel, QPushButton, QHBoxLayout
+        from ui.qt_compat import QDialog, QVBoxLayout, QPushButton, QHBoxLayout
         dlg = QDialog(main_window)
         dlg.setWindowTitle(main_window.tr("size_warning_title", default="Size Warning"))
         dlg.setWindowFlags(
