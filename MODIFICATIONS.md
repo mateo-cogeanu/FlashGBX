@@ -12,6 +12,9 @@ under GPL-3.0-or-later; the original copyright and license notices are retained.
 - Private cached ROM dumps followed by automatic mGBA or SameBoy launch.
 - Emulator auto-discovery and a persistent custom-emulator selection.
 - Checksum failures block automatic emulator launch and remain visibly reported.
+- Cached Libretro box art for database-matched cartridges.
+- Two-stage authenticity evidence: instant header checks and optional full-ROM
+  CRC verification against the known-release database.
 
 ## Hardware behavior
 

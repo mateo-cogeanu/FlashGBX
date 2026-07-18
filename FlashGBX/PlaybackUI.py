@@ -6,7 +6,19 @@ implements the same kind of calm, cartridge-first information hierarchy while
 leaving FlashGBX's device and transfer widgets untouched on the Data page.
 """
 
-from .pyside import QtCore, QtWidgets
+import hashlib
+import os
+import threading
+
+import requests
+
+from .pyside import QtCore, QtWidgets, QtGui
+from .app import AppContext
+from .CartridgePresentation import authenticity_assessment, box_art_url
+
+
+class _ArtworkSignals(QtCore.QObject):
+	loaded = QtCore.Signal(str, bytes)
 
 
 class PlaybackShell(QtWidgets.QWidget):
@@ -15,6 +27,9 @@ class PlaybackShell(QtWidgets.QWidget):
 	def __init__(self, host, data_page):
 		super().__init__()
 		self.host = host
+		self._cover_key = None
+		self._art_signals = _ArtworkSignals()
+		self._art_signals.loaded.connect(self._apply_cover_art)
 		self.setObjectName("playbackShell")
 		self.setMinimumSize(940, 620)
 
@@ -91,10 +106,10 @@ class PlaybackShell(QtWidgets.QWidget):
 		art.setFixedSize(236, 292)
 		art_layout = QtWidgets.QVBoxLayout(art)
 		art_layout.setContentsMargins(24, 32, 24, 24)
-		label = QtWidgets.QLabel("GB")
-		label.setAlignment(QtCore.Qt.AlignCenter)
-		label.setObjectName("cartridgeLabel")
-		art_layout.addWidget(label, 1)
+		self.cartridge_label = QtWidgets.QLabel("GB")
+		self.cartridge_label.setAlignment(QtCore.Qt.AlignCenter)
+		self.cartridge_label.setObjectName("cartridgeLabel")
+		art_layout.addWidget(self.cartridge_label, 1)
 		groove = QtWidgets.QFrame()
 		groove.setObjectName("cartridgeGroove")
 		groove.setFixedHeight(8)
@@ -127,7 +142,29 @@ class PlaybackShell(QtWidgets.QWidget):
 		meta.addWidget(self.device_chip)
 		meta.addStretch()
 		copy.addLayout(meta)
-		copy.addSpacing(14)
+		copy.addSpacing(4)
+
+		auth = QtWidgets.QFrame()
+		auth.setObjectName("authCard")
+		auth_layout = QtWidgets.QVBoxLayout(auth)
+		auth_layout.setContentsMargins(14, 11, 14, 11)
+		auth_layout.setSpacing(4)
+		auth_top = QtWidgets.QHBoxLayout()
+		self.auth_label = QtWidgets.QLabel("Not checked")
+		self.auth_label.setObjectName("authUnknown")
+		self.auth_button = QtWidgets.QPushButton("Run full check")
+		self.auth_button.setObjectName("authButton")
+		self.auth_button.clicked.connect(lambda _checked=False: self.host.CheckAuthenticity())
+		auth_top.addWidget(self.auth_label)
+		auth_top.addStretch()
+		auth_top.addWidget(self.auth_button)
+		self.auth_detail = QtWidgets.QLabel("Identify the cartridge to check its data.")
+		self.auth_detail.setObjectName("authDetail")
+		self.auth_detail.setWordWrap(True)
+		auth_layout.addLayout(auth_top)
+		auth_layout.addWidget(self.auth_detail)
+		copy.addWidget(auth)
+		copy.addSpacing(8)
 
 		self.play_button = QtWidgets.QPushButton("Play cartridge  →")
 		self.play_button.setObjectName("playButton")
@@ -194,6 +231,8 @@ class PlaybackShell(QtWidgets.QWidget):
 		self.device_chip.setText(device_name.upper() if connected else "NO READER")
 
 		if not connected:
+			self._reset_cover_art()
+			self._update_authenticity({})
 			self.state_label.setText("READER DISCONNECTED")
 			self.title_label.setText("Connect your cartridge reader")
 			self.subtitle_label.setText("FlashGBX supports GBxCart RW, GBFlash, Joey Jr and Game Bub.")
@@ -201,6 +240,8 @@ class PlaybackShell(QtWidgets.QWidget):
 			self.play_button.setEnabled(True)
 			return
 		if mode not in ("DMG", "AGB"):
+			self._reset_cover_art()
+			self._update_authenticity({})
 			self.state_label.setText("READER CONNECTED")
 			self.title_label.setText("Choose your cartridge platform")
 			self.subtitle_label.setText("Select Game Boy / Color or Game Boy Advance so the reader uses the correct voltage.")
@@ -209,6 +250,8 @@ class PlaybackShell(QtWidgets.QWidget):
 			self.play_button.setEnabled(True)
 			return
 		if empty:
+			self._reset_cover_art()
+			self._update_authenticity({})
 			self.state_label.setText("WAITING FOR CARTRIDGE")
 			self.title_label.setText("Insert a Game Boy cartridge")
 			self.subtitle_label.setText("Then refresh once if your reader does not detect hot-swaps automatically.")
@@ -224,10 +267,75 @@ class PlaybackShell(QtWidgets.QWidget):
 		self.subtitle_label.setText(("Game code " + str(code)) if code else "Header read successfully. Ready for a temporary verified dump.")
 		self.play_button.setText("Play cartridge  →")
 		self.play_button.setEnabled(True)
+		self._update_authenticity(info)
+		self._load_cover_art(info, mode)
 
 	def set_busy(self, busy, text=None):
 		self.play_button.setEnabled(not busy)
 		self.play_button.setText(text or ("Preparing game…" if busy else "Play cartridge  →"))
+
+	def set_auth_busy(self, busy):
+		self.auth_button.setEnabled(not busy)
+		self.auth_button.setText("Checking full ROM…" if busy else "Run full check")
+
+	def _update_authenticity(self, info):
+		assessment = authenticity_assessment(info)
+		self.auth_label.setText(assessment["label"])
+		self.auth_label.setObjectName("auth{:s}".format(assessment["level"].title()))
+		self.auth_label.style().unpolish(self.auth_label)
+		self.auth_label.style().polish(self.auth_label)
+		self.auth_detail.setText(assessment["detail"])
+		ready = bool(info) and not info.get("empty", True)
+		self.auth_button.setEnabled(ready)
+		self.auth_button.setText("Re-check full ROM" if "file_crc32" in (info or {}) else "Run full check")
+
+	def _reset_cover_art(self):
+		self._cover_key = None
+		self.cartridge_label.setPixmap(QtGui.QPixmap())
+		self.cartridge_label.setText("GB")
+		self.cartridge_label.setStyleSheet("")
+
+	def _load_cover_art(self, info, mode):
+		url = box_art_url(info, mode)
+		if not url:
+			self._reset_cover_art()
+			return
+		key = hashlib.sha1(url.encode("utf-8")).hexdigest()
+		if key == self._cover_key:
+			return
+		self._cover_key = key
+		cache_dir = os.path.join(AppContext.CONFIG_PATH, "cover-cache")
+		cache_path = os.path.join(cache_dir, key + ".png")
+
+		def load():
+			try:
+				if os.path.isfile(cache_path):
+					with open(cache_path, "rb") as cover_file:
+						data = cover_file.read()
+				else:
+					response = requests.get(url, timeout=12, headers={"User-Agent":"CartridgePlay/1.0"})
+					if response.status_code != 200 or "image" not in response.headers.get("Content-Type", ""):
+						return
+					data = response.content
+					os.makedirs(cache_dir, exist_ok=True)
+					with open(cache_path, "wb") as cover_file:
+						cover_file.write(data)
+				self._art_signals.loaded.emit(key, data)
+			except (OSError, requests.RequestException):
+				return
+
+		threading.Thread(target=load, daemon=True).start()
+
+	def _apply_cover_art(self, key, data):
+		if key != self._cover_key:
+			return
+		pixmap = QtGui.QPixmap()
+		if not pixmap.loadFromData(data):
+			return
+		pixmap = pixmap.scaled(188, 232, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+		self.cartridge_label.setText("")
+		self.cartridge_label.setStyleSheet("background:#0f1116; border:0; border-radius:9px;")
+		self.cartridge_label.setPixmap(pixmap)
 
 
 STYLESHEET = """
@@ -249,6 +357,16 @@ QPushButton#navButton:checked { background: #232832; color: #ffffff; }
 #subtitle { color: #9ca3ae; font-size: 14px; line-height: 1.4; }
 #chip, #chipMuted { background: #262b33; color: #d9dde3; border-radius: 10px; padding: 7px 10px; font-size: 10px; font-weight: 700; }
 #chipMuted { color: #858d99; }
+#authCard { background: #1c2027; border: 1px solid #303640; border-radius: 10px; }
+#authUnknown, #authKnown, #authWarning, #authDanger, #authVerified { font-size: 11px; font-weight: 800; }
+#authUnknown { color: #8d95a1; }
+#authKnown { color: #73a8ff; }
+#authWarning { color: #f1b85b; }
+#authDanger { color: #ff6b62; }
+#authVerified { color: #69d49a; }
+#authDetail { color: #89919c; font-size: 10px; }
+QPushButton#authButton { color: #d5d9df; background: transparent; border: 0; min-height: 18px; font-size: 10px; font-weight: 700; }
+QPushButton#authButton:hover { color: #ffffff; }
 QPushButton#playButton { background: #ff6b47; color: #15120f; border: 0; border-radius: 12px; padding: 0 20px; font-size: 15px; font-weight: 800; text-align: left; }
 QPushButton#playButton:hover { background: #ff805f; }
 QPushButton#playButton:disabled { background: #333740; color: #747b86; }

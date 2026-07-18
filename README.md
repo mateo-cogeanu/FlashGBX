@@ -23,6 +23,14 @@ writes to the physical cartridge. Emulator save files currently remain in the
 private play cache; use Data when you explicitly want to restore a save to a
 cartridge.
 
+When a cartridge matches the bundled release database, Cartridge Play downloads
+its box art from the [Libretro thumbnail service](https://thumbnails.libretro.com/)
+and caches it locally. The authenticity card checks Nintendo logo and header
+integrity immediately. Its optional full check dumps the complete ROM and
+compares its CRC with the known release. A matching ROM is strong digital
+evidence, but cannot prove that the physical shell or PCB is original; exact-copy
+reproduction cartridges still require visual inspection.
+
 See [MODIFICATIONS.md](MODIFICATIONS.md) for implementation notes and scope.
 
 for Windows, Linux, macOS (→ [Download](#downloads))

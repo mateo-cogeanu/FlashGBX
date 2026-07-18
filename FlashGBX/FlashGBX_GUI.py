@@ -1707,6 +1707,8 @@ class FlashGBX_GUI(QtWidgets.QMainWindow):
 
 		if self.CONN.INFO["last_action"] == 1: # Backup ROM
 			play_after_dump = bool(self.STATUS.pop("play_after_dump", False))
+			authenticity_scan = bool(self.STATUS.pop("authenticity_scan", False))
+			quiet_backup = play_after_dump or authenticity_scan
 			self.CONN.INFO["last_action"] = 0
 			dump_report = False
 			button_dump_report = None
@@ -1746,13 +1748,13 @@ class FlashGBX_GUI(QtWidgets.QMainWindow):
 					self.lblStatus4a.setText(__("Done!"))
 					msg = __("The ROM backup is complete and the checksum was verified successfully!")
 					msgbox.setText(msg + msg_te)
-					if not play_after_dump: msgbox.exec()
+					if not quiet_backup: msgbox.exec()
 				else:
 					self.lblStatus4a.setText(__("Done!"))
 					if "mapper_raw" in self.CONN.INFO and self.CONN.INFO["mapper_raw"] in (0x202, 0x203, 0x205):
 						msg = __("The ROM backup is complete.")
 						msgbox.setText(msg + msg_te)
-						if not play_after_dump: msgbox.exec()
+						if not quiet_backup: msgbox.exec()
 					else:
 						self.lblDMGHeaderROMChecksumResult.setText(c__("Game Data", "Invalid") + " (0x{:04X}≠0x{:04X})".format(self.CONN.INFO.get("rom_checksum_calc", 0), self.CONN.INFO.get("rom_checksum", 0)))
 						self.lblDMGHeaderROMChecksumResult.setStyleSheet("QLabel { color: red; }")
@@ -1767,9 +1769,10 @@ class FlashGBX_GUI(QtWidgets.QMainWindow):
 								button_gmmc1 = msgbox.addButton(__("Retry with {mapper}", mapper="G-MMC1"), QtWidgets.QMessageBox.ActionRole)
 						msgbox.setText(msg + msg_te)
 						msgbox.setIcon(QtWidgets.QMessageBox.Warning)
-						play_after_dump = False
-						self.playback_shell.set_busy(False)
-						msgbox.exec()
+						if play_after_dump:
+							play_after_dump = False
+							self.playback_shell.set_busy(False)
+						if not authenticity_scan: msgbox.exec()
 						if msgbox.clickedButton() == button_gmmc1:
 							if self.CheckDeviceAlive():
 								self.cmbDMGHeaderMapperResult.setCurrentIndex(ConvertMapperToMapperType(0x105)[2])
@@ -1794,7 +1797,7 @@ class FlashGBX_GUI(QtWidgets.QMainWindow):
 						self.lblStatus4a.setText(__("Done!"))
 						msg = __("The ROM backup is complete and the checksum was verified successfully!")
 						msgbox.setText(msg + msg_te)
-						if not play_after_dump: msgbox.exec()
+						if not quiet_backup: msgbox.exec()
 					else:
 						self.lblAGBHeaderROMChecksumResult.setText(c__("Game Data", "Invalid") + " (0x{:06X}≠0x{:06X})".format(self.CONN.INFO.get("file_crc32", 0), self.CONN.INFO["db"]["rc"]))
 						self.lblAGBHeaderROMChecksumResult.setStyleSheet("QLabel { color: red; }")
@@ -1806,9 +1809,10 @@ class FlashGBX_GUI(QtWidgets.QMainWindow):
 							msg += " " + __("This may indicate a bad dump, however this can be normal for some reproduction cartridges, unlicensed games, prototypes, patched games and intentional overdumps.")
 						msgbox.setText(msg + msg_te)
 						msgbox.setIcon(QtWidgets.QMessageBox.Warning)
-						play_after_dump = False
-						self.playback_shell.set_busy(False)
-						msgbox.exec()
+						if play_after_dump:
+							play_after_dump = False
+							self.playback_shell.set_busy(False)
+						if not authenticity_scan: msgbox.exec()
 				else:
 					self.lblAGBHeaderROMChecksumResult.setText("0x{:06X}".format(self.CONN.INFO.get("file_crc32", 0)))
 					self.lblAGBHeaderROMChecksumResult.setStyleSheet(self.DEFAULT_STYLESHEET)
@@ -1818,7 +1822,7 @@ class FlashGBX_GUI(QtWidgets.QMainWindow):
 						msg += "\n\n" + __("A data loop was detected in the ROM backup at position {pos} ({size}). This may indicate a bad dump or overdump.", pos="0x{:X}".format(self.CONN.INFO["loop_detected"]), size=Formatter.file_size(self.CONN.INFO["loop_detected"], as_int=True))
 						msgbox.setIcon(QtWidgets.QMessageBox.Warning)
 					msgbox.setText(msg + msg_te)
-					if not play_after_dump: msgbox.exec()
+					if not quiet_backup: msgbox.exec()
 
 			if msgbox.clickedButton() == button_dump_report:
 				if not (dump_report is not False and dumpinfo_file != "" and temp is True):
@@ -1832,7 +1836,11 @@ class FlashGBX_GUI(QtWidgets.QMainWindow):
 			elif msgbox.clickedButton() == button_open_dir:
 				self.OpenPath(self.STATUS["last_path"], select_file=True)
 			if play_after_dump:
+				self.playback_shell.update_cartridge(self.CONN.INFO, self.CONN.GetMode(), self.CONN.GetFullName())
 				QtCore.QTimer.singleShot(0, self._LaunchDumpedGame)
+			if authenticity_scan:
+				self.playback_shell.set_auth_busy(False)
+				self.playback_shell.update_cartridge(self.CONN.INFO, self.CONN.GetMode(), self.CONN.GetFullName())
 
 		elif self.CONN.INFO["last_action"] == 2: # Backup RAM
 			self.lblStatus4a.setText(__("Done!"))
@@ -2071,6 +2079,21 @@ class FlashGBX_GUI(QtWidgets.QMainWindow):
 		if not self.BackupROM(target_path=path):
 			self.STATUS.pop("play_after_dump", None)
 			self.playback_shell.set_busy(False)
+
+	def CheckAuthenticity(self):
+		"""Perform a full cartridge dump and compare it with the release database."""
+		if not self.CheckDeviceAlive() or self.CONN.INFO.get("empty", True):
+			QtWidgets.QMessageBox.information(self, "Authenticity check", "Insert and identify a cartridge before running a full check.")
+			return
+		cache_dir = os.path.join(AppContext.CONFIG_PATH, "authenticity-cache")
+		os.makedirs(cache_dir, exist_ok=True)
+		filename = generate_filename(mode=self.CONN.GetMode(), header=self.CONN.INFO, settings=self.SETTINGS)
+		path = os.path.join(cache_dir, filename)
+		self.STATUS["authenticity_scan"] = True
+		self.playback_shell.set_auth_busy(True)
+		if not self.BackupROM(target_path=path):
+			self.STATUS.pop("authenticity_scan", None)
+			self.playback_shell.set_auth_busy(False)
 
 	def _FindEmulator(self, mode):
 		setting = "PlaybackEmulatorAGB" if mode == "AGB" else "PlaybackEmulatorDMG"
