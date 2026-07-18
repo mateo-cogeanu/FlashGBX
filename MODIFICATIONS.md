@@ -15,6 +15,22 @@ under GPL-3.0-or-later; the original copyright and license notices are retained.
 - Cached Libretro box art for database-matched cartridges.
 - Two-stage authenticity evidence: instant header checks and optional full-ROM
   CRC verification against the known-release database.
+- A Tools-menu GBA Video Maker that trims and previews ordinary video, encodes
+  GBA-native VQ/motion-compensated frames and PCM or ADPCM audio, and exports a
+  standalone `.gba` ROM.
+
+## GBA Video Maker provenance
+
+The video editor, encoder, and GBA playback runtime are a modified bundled copy
+of GBA Video Studio 1.1.0 by CompuMax, upstream commit
+`26e5606d6aabcd24338f198b1065e4392c1ba132`. That project is GPL-3.0 and is
+license-compatible with FlashGBX. Its source, license, and upstream documentation
+are retained in `FlashGBX/res/gba_video_studio/`.
+
+FlashGBX adds a writable runtime-copy launcher, on-demand dependency setup,
+Tools-menu integration, suppression of the standalone Windows updater, and
+cross-platform devkitARM discovery so direct ROM builds work on Windows, macOS,
+and Linux.
 
 ## Hardware behavior
 

@@ -33,6 +33,24 @@ reproduction cartridges still require visual inspection.
 
 See [MODIFICATIONS.md](MODIFICATIONS.md) for implementation notes and scope.
 
+## GBA Video Maker
+
+Open **Menu → Tools → GBA Video Maker** to turn MP4, AVI, MOV, and other
+videos into standalone Game Boy Advance ROMs. The first launch offers to install
+the optional encoder components. The editor can trim and preview the clip,
+crop or letterbox it to 240×160, choose a GBA-native frame rate, tune quality,
+and encode PCM or space-saving ADPCM audio.
+
+Choose an output folder and press **Build ROM** to export a `.gba` file. ROM
+compilation requires the open-source [devkitPro](https://devkitpro.org/wiki/Getting_Started)
+toolchain with the `gba-dev` group; FFmpeg is supplied by `imageio-ffmpeg`.
+Generated ROM controls are START/A to pause, B to mute, SELECT to lock controls,
+and LEFT/RIGHT to seek when PCM audio is selected.
+
+The encoder is based on the GPL-3.0
+[GBA Video Studio](https://github.com/CompuMaxx/GBA-Video-Studio) project. Its
+source and license are bundled with FlashGBX.
+
 for Windows, Linux, macOS (→ [Download](#downloads))
 
 <img src="https://raw.githubusercontent.com/Lesserkuma/FlashGBX/master/.github/01.png" alt="FlashGBX on Windows 11" width="500"><br><img src="https://raw.githubusercontent.com/Lesserkuma/FlashGBX/master/.github/02.png" alt="GB Camera Album Viewer" width="500">

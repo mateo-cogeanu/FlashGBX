@@ -339,6 +339,17 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
 NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+# GBA Video Studio
+
+The GBA Video Maker feature includes a modified copy of GBA Video Studio 1.1.0
+by CompuMax (https://github.com/CompuMaxx/GBA-Video-Studio), retrieved from
+upstream commit 26e5606d6aabcd24338f198b1065e4392c1ba132.
+
+It is licensed under the GNU General Public License version 3. The complete
+license, upstream README, integration guide, and preferred source are included
+under `FlashGBX/res/gba_video_studio/`. FlashGBX changes are documented in
+`MODIFICATIONS.md` and in the modified source files.
+
 The above BSD License Applies to all code, even that also covered by Apache 2.0.
 
 # packaging

@@ -43,6 +43,7 @@ class FlashGBX_GUI(QtWidgets.QMainWindow):
 	CAMWIN = None
 	FWUPWIN = None
 	INTWIN = None
+	VIDEOSTUDIOPROC = None
 	STATUS = {}
 	TEXT_COLOR = (0, 0, 0, 255)
 	MSGBOX_QUEUE = queue.Queue()
@@ -228,6 +229,7 @@ class FlashGBX_GUI(QtWidgets.QMainWindow):
 		self.mnuTools.addAction("", self.ShowInteractiveConsoleWindow)
 		self.mnuTools.addSeparator()
 		self.mnuTools.addAction("", self.ShowFirmwareUpdateWindow)
+		self.mnuTools.addAction("", self.ShowVideoStudioWindow)
 		self.mnuTools.actions()[1].setEnabled(False)
 
 		self.mnuConfig = QtWidgets.QMenu()
@@ -662,6 +664,7 @@ class FlashGBX_GUI(QtWidgets.QMainWindow):
 		self.mnuTools.actions()[0].setText(c__("Menu Item (& = Keyboard Shortcut)", "Game Boy &Camera Album Viewer"))
 		self.mnuTools.actions()[1].setText(c__("Menu Item (& = Keyboard Shortcut)", "&Interactive Console"))
 		self.mnuTools.actions()[3].setText(c__("Menu Item (& = Keyboard Shortcut)", "Firmware &Updater"))
+		self.mnuTools.actions()[4].setText(c__("Menu Item (& = Keyboard Shortcut)", "GBA &Video Maker"))
 
 		# Settings menu
 		self.mnuConfig.setTitle(c__("Menu Item (& = Keyboard Shortcut)", "&Settings"))
@@ -4367,6 +4370,10 @@ class FlashGBX_GUI(QtWidgets.QMainWindow):
 		self.FWUPWIN.setAttribute(QtCore.Qt.WA_DeleteOnClose, True)
 		self.FWUPWIN.setModal(True)
 		self.FWUPWIN.run()
+
+	def ShowVideoStudioWindow(self):
+		from .VideoStudioLauncher import launch_video_studio
+		launch_video_studio(self)
 
 	def ShowPocketCameraWindow(self):
 		data = None
