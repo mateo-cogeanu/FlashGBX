@@ -2,7 +2,7 @@
 # FlashGBX
 # Author: Lesserkuma (github.com/Lesserkuma)
 
-import sys, os, time, datetime, json, platform, subprocess, requests, webbrowser, threading, calendar, queue, urllib.parse, re, html
+import sys, os, time, datetime, json, platform, subprocess, requests, webbrowser, threading, calendar, queue, urllib.parse, re, html, shutil
 from .pyside import QtCore, QtWidgets, QtGui, QApplication, QActionGroup
 from serial import SerialException
 from packaging import version
@@ -23,6 +23,7 @@ from .Flashcart import empty_flashcarts_map, has_3v_compatible_profile
 from .RomFileDMG import from_isx
 from .Mapper import ConvertMapperToMapperType, ConvertMapperTypeToMapper, get_mbc_name, save_size_includes_rtc, compare_mbc
 from .pyside import bitmap2pixmap, GetQtVersion, IsDarkMode
+from .PlaybackUI import PlaybackShell
 
 SAVE_EXTS = (".sav", ".srm", ".fla", ".eep")
 ROM_EXTS_DMG = (".gb", ".sgb", ".gbc", ".bin", ".isx")
@@ -351,7 +352,9 @@ class FlashGBX_GUI(QtWidgets.QMainWindow):
 		self.central_widget = QtWidgets.QWidget()
 		self.central_widget.setContentsMargins(0, 0, 0, 0)
 		self.central_widget.setLayout(self.layout)
-		self.setCentralWidget(self.central_widget)
+		self.playback_shell = PlaybackShell(self, self.central_widget)
+		self.setCentralWidget(self.playback_shell)
+		self.resize(1120, 720)
 
 		# Show app window first, then do update check
 		self.QT_APP = qt_app
@@ -1202,6 +1205,8 @@ class FlashGBX_GUI(QtWidgets.QMainWindow):
 		self.mnuConfigReadModeAGB.setEnabled(True)
 		self.mnuLanguage.setEnabled(True)
 		self.UpdateThirdPartySupportAction()
+		if hasattr(self, "playback_shell"):
+			self.playback_shell.update_cartridge()
 
 	def ReEnableMessages(self):
 		self.SETTINGS.setValue("AutoReconnect", "disabled")
@@ -1669,6 +1674,7 @@ class FlashGBX_GUI(QtWidgets.QMainWindow):
 			self.STATUS["time_start"] = 0
 
 		if self.CONN.INFO["last_action"] == 1: # Backup ROM
+			play_after_dump = bool(self.STATUS.pop("play_after_dump", False))
 			self.CONN.INFO["last_action"] = 0
 			dump_report = False
 			button_dump_report = None
@@ -1708,13 +1714,13 @@ class FlashGBX_GUI(QtWidgets.QMainWindow):
 					self.lblStatus4a.setText(__("Done!"))
 					msg = __("The ROM backup is complete and the checksum was verified successfully!")
 					msgbox.setText(msg + msg_te)
-					msgbox.exec()
+					if not play_after_dump: msgbox.exec()
 				else:
 					self.lblStatus4a.setText(__("Done!"))
 					if "mapper_raw" in self.CONN.INFO and self.CONN.INFO["mapper_raw"] in (0x202, 0x203, 0x205):
 						msg = __("The ROM backup is complete.")
 						msgbox.setText(msg + msg_te)
-						msgbox.exec()
+						if not play_after_dump: msgbox.exec()
 					else:
 						self.lblDMGHeaderROMChecksumResult.setText(c__("Game Data", "Invalid") + " (0x{:04X}≠0x{:04X})".format(self.CONN.INFO.get("rom_checksum_calc", 0), self.CONN.INFO.get("rom_checksum", 0)))
 						self.lblDMGHeaderROMChecksumResult.setStyleSheet("QLabel { color: red; }")
@@ -1729,6 +1735,8 @@ class FlashGBX_GUI(QtWidgets.QMainWindow):
 								button_gmmc1 = msgbox.addButton(__("Retry with {mapper}", mapper="G-MMC1"), QtWidgets.QMessageBox.ActionRole)
 						msgbox.setText(msg + msg_te)
 						msgbox.setIcon(QtWidgets.QMessageBox.Warning)
+						play_after_dump = False
+						self.playback_shell.set_busy(False)
 						msgbox.exec()
 						if msgbox.clickedButton() == button_gmmc1:
 							if self.CheckDeviceAlive():
@@ -1754,7 +1762,7 @@ class FlashGBX_GUI(QtWidgets.QMainWindow):
 						self.lblStatus4a.setText(__("Done!"))
 						msg = __("The ROM backup is complete and the checksum was verified successfully!")
 						msgbox.setText(msg + msg_te)
-						msgbox.exec()
+						if not play_after_dump: msgbox.exec()
 					else:
 						self.lblAGBHeaderROMChecksumResult.setText(c__("Game Data", "Invalid") + " (0x{:06X}≠0x{:06X})".format(self.CONN.INFO.get("file_crc32", 0), self.CONN.INFO["db"]["rc"]))
 						self.lblAGBHeaderROMChecksumResult.setStyleSheet("QLabel { color: red; }")
@@ -1766,6 +1774,8 @@ class FlashGBX_GUI(QtWidgets.QMainWindow):
 							msg += " " + __("This may indicate a bad dump, however this can be normal for some reproduction cartridges, unlicensed games, prototypes, patched games and intentional overdumps.")
 						msgbox.setText(msg + msg_te)
 						msgbox.setIcon(QtWidgets.QMessageBox.Warning)
+						play_after_dump = False
+						self.playback_shell.set_busy(False)
 						msgbox.exec()
 				else:
 					self.lblAGBHeaderROMChecksumResult.setText("0x{:06X}".format(self.CONN.INFO.get("file_crc32", 0)))
@@ -1776,7 +1786,7 @@ class FlashGBX_GUI(QtWidgets.QMainWindow):
 						msg += "\n\n" + __("A data loop was detected in the ROM backup at position {pos} ({size}). This may indicate a bad dump or overdump.", pos="0x{:X}".format(self.CONN.INFO["loop_detected"]), size=Formatter.file_size(self.CONN.INFO["loop_detected"], as_int=True))
 						msgbox.setIcon(QtWidgets.QMessageBox.Warning)
 					msgbox.setText(msg + msg_te)
-					msgbox.exec()
+					if not play_after_dump: msgbox.exec()
 
 			if msgbox.clickedButton() == button_dump_report:
 				if not (dump_report is not False and dumpinfo_file != "" and temp is True):
@@ -1789,6 +1799,8 @@ class FlashGBX_GUI(QtWidgets.QMainWindow):
 				self.OpenPath(dumpinfo_file)
 			elif msgbox.clickedButton() == button_open_dir:
 				self.OpenPath(self.STATUS["last_path"], select_file=True)
+			if play_after_dump:
+				QtCore.QTimer.singleShot(0, self._LaunchDumpedGame)
 
 		elif self.CONN.INFO["last_action"] == 2: # Backup RAM
 			self.lblStatus4a.setText(__("Done!"))
@@ -1957,9 +1969,9 @@ class FlashGBX_GUI(QtWidgets.QMainWindow):
 			if answer == QtWidgets.QMessageBox.No: return False
 		return True
 
-	def BackupROM(self):
-		if not self.CheckDeviceAlive(): return
-		if not self.CheckHeader(): return
+	def BackupROM(self, target_path=None):
+		if not self.CheckDeviceAlive(): return False
+		if not self.CheckHeader(): return False
 
 		mbc = ConvertMapperTypeToMapper(self.cmbDMGHeaderMapperResult.currentIndex())
 
@@ -1971,7 +1983,10 @@ class FlashGBX_GUI(QtWidgets.QMainWindow):
 			last_dir = self.SETTINGS.value(setting_name)
 			if last_dir is None: last_dir = QtCore.QStandardPaths.writableLocation(QtCore.QStandardPaths.DocumentsLocation)
 
-			path = QtWidgets.QFileDialog.getSaveFileName(self, __("Backup ROM"), last_dir + os.sep + path, __("Game Boy ROM File") + " (" + " ".join("*" + e for e in ROM_EXTS_DMG_READ) + ");;" + __("All Files") + " (*.*)")[0]
+			if target_path is None:
+				path = QtWidgets.QFileDialog.getSaveFileName(self, __("Backup ROM"), last_dir + os.sep + path, __("Game Boy ROM File") + " (" + " ".join("*" + e for e in ROM_EXTS_DMG_READ) + ");;" + __("All Files") + " (*.*)")[0]
+			else:
+				path = target_path
 			cart_type = self.cmbDMGCartridgeTypeResult.currentIndex()
 			rom_size = RomSizes().GetSize(self.cmbDMGHeaderROMSizeResult.currentIndex())
 
@@ -1981,12 +1996,16 @@ class FlashGBX_GUI(QtWidgets.QMainWindow):
 			if last_dir is None: last_dir = QtCore.QStandardPaths.writableLocation(QtCore.QStandardPaths.DocumentsLocation)
 
 			rom_size = RomSizes().GetSize(self.cmbAGBHeaderROMSizeResult.currentIndex())
-			path = QtWidgets.QFileDialog.getSaveFileName(self, __("Backup ROM"), last_dir + os.sep + path, __("Game Boy Advance ROM File") + " (" + " ".join("*" + e for e in ROM_EXTS_AGB) + ");;" + __("All Files") + " (*.*)")[0]
+			if target_path is None:
+				path = QtWidgets.QFileDialog.getSaveFileName(self, __("Backup ROM"), last_dir + os.sep + path, __("Game Boy Advance ROM File") + " (" + " ".join("*" + e for e in ROM_EXTS_AGB) + ");;" + __("All Files") + " (*.*)")[0]
+			else:
+				path = target_path
 			cart_type = self.cmbAGBCartridgeTypeResult.currentIndex()
 
-		if (path == ""): return
+		if (path == ""): return False
 
-		self.SETTINGS.setValue(setting_name, os.path.dirname(path))
+		if target_path is None:
+			self.SETTINGS.setValue(setting_name, os.path.dirname(path))
 		self.lblDMGHeaderROMChecksumResult.setStyleSheet(self.DEFAULT_STYLESHEET)
 		self.lblAGBHeaderROMChecksumResult.setStyleSheet(self.DEFAULT_STYLESHEET)
 
@@ -2004,6 +2023,65 @@ class FlashGBX_GUI(QtWidgets.QMainWindow):
 		self.STATUS["time_start"] = time.time()
 		self.STATUS["last_path"] = path
 		self.STATUS["args"] = args
+		return True
+
+	def PlayCartridge(self):
+		"""Dump the inserted cartridge to a private cache and launch an emulator."""
+		if not self.CheckDeviceAlive() or self.CONN.INFO.get("empty", True):
+			QtWidgets.QMessageBox.information(self, "Cartridge Play", "Insert a cartridge and refresh it before playing.")
+			return
+		cache_dir = os.path.join(AppContext.CONFIG_PATH, "play-cache")
+		os.makedirs(cache_dir, exist_ok=True)
+		filename = generate_filename(mode=self.CONN.GetMode(), header=self.CONN.INFO, settings=self.SETTINGS)
+		path = os.path.join(cache_dir, filename)
+		self.STATUS["play_after_dump"] = True
+		self.playback_shell.set_busy(True)
+		if not self.BackupROM(target_path=path):
+			self.STATUS.pop("play_after_dump", None)
+			self.playback_shell.set_busy(False)
+
+	def _FindEmulator(self, mode):
+		setting = "PlaybackEmulatorAGB" if mode == "AGB" else "PlaybackEmulatorDMG"
+		configured = self.SETTINGS.value(setting, default="")
+		if configured and os.path.isfile(configured):
+			return configured
+		candidates = []
+		if platform.system() == "Darwin":
+			candidates.extend([
+				"/Applications/mGBA.app/Contents/MacOS/mGBA",
+				"/Applications/SameBoy.app/Contents/MacOS/SameBoy",
+			])
+		for command in (("mgba", "sameboy") if mode != "AGB" else ("mgba",)):
+			found = shutil.which(command)
+			if found: candidates.append(found)
+		for candidate in candidates:
+			if os.path.isfile(candidate):
+				self.SETTINGS.setValue(setting, candidate)
+				return candidate
+		selected = QtWidgets.QFileDialog.getOpenFileName(self, "Choose an emulator", "", "Applications (*)")[0]
+		if selected.lower().endswith(".app") and os.path.isdir(selected):
+			app_name = os.path.splitext(os.path.basename(selected))[0]
+			mac_executable = os.path.join(selected, "Contents", "MacOS", app_name)
+			if os.path.isfile(mac_executable):
+				selected = mac_executable
+		if selected:
+			self.SETTINGS.setValue(setting, selected)
+		return selected
+
+	def _LaunchDumpedGame(self):
+		path = self.STATUS.get("last_path", "")
+		self.playback_shell.set_busy(False)
+		if not path or not os.path.isfile(path):
+			return
+		emulator = self._FindEmulator(self.CONN.GetMode())
+		if not emulator:
+			QtWidgets.QMessageBox.information(self, "Cartridge Play", "The game was prepared, but no emulator was selected. Install mGBA or SameBoy, then press Play again.")
+			return
+		try:
+			subprocess.Popen([emulator, path])
+			self.lblStatus4a.setText("Playing in {:s}".format(os.path.basename(emulator)))
+		except OSError as err:
+			QtWidgets.QMessageBox.critical(self, "Cartridge Play", "Could not launch the emulator:\n{:s}".format(str(err)))
 
 	def FlashROM(self, dpath=""):
 		if not self.CheckDeviceAlive(): return
@@ -3572,6 +3650,14 @@ class FlashGBX_GUI(QtWidgets.QMainWindow):
 		if data['game_title'][:11] == "YJencrypted" and resetStatus:
 			QtWidgets.QMessageBox.warning(self, "{:s} {:s}".format(AppInfo.NAME, AppInfo.VERSION), __("This cartridge may be protected against reading or writing a ROM. If you don’t want to risk this cartridge to render itself unusable, please do not try to write a new ROM to it."), QtWidgets.QMessageBox.Ok)
 
+		if hasattr(self, "playback_shell"):
+			try:
+				self.playback_shell.update_cartridge(data, self.CONN.GetMode(), self.CONN.GetFullName())
+			except Exception:
+				self.playback_shell.update_cartridge(data, self.CONN.GetMode(), "Connected reader")
+		if not data.get("empty", True) and (self.STATUS.pop("autoplay_after_connect", False) or self.STATUS.pop("autoplay_after_refresh", False)):
+			QtCore.QTimer.singleShot(0, self.PlayCartridge)
+
 	def LimitBaudRateGBxCartRW(self):
 		if self.CONN.GetName() == "GBxCart RW" and str(self.SETTINGS.value("AutoLimitBaudRate", default="enabled")).lower() == "enabled" and str(self.SETTINGS.value("LimitBaudRate", default="disabled")).lower() == "disabled":
 			dprint("Setting “" + self.mnuConfig.actions()[5].text().replace("&", "") + "” to “enabled”")
@@ -4376,4 +4462,3 @@ if platform.system() == "Linux":
 else:
 	qt_app.setApplicationName(AppInfo.NAME)
 loadQtTranslation(qt_app)
-

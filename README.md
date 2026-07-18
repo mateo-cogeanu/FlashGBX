@@ -1,5 +1,30 @@
 # FlashGBX (by Lesserkuma)
 
+> **Cartridge Play fork:** This fork adds a modern play-first interface and
+> one-click cartridge launching while preserving FlashGBX's complete Data
+> toolset. It is an independent community modification and is not affiliated
+> with or endorsed by Epilogue. No Epilogue code, artwork, or proprietary assets
+> are included.
+
+## Cartridge Play
+
+The new **Play** page is the default home screen. Connect a supported reader,
+insert a cartridge, and choose **Connect reader and play**. Cartridge Play reads
+and verifies a temporary ROM image, then launches it in an installed emulator.
+It automatically discovers [mGBA](https://mgba.io/) for Game Boy, Game Boy Color
+and Game Boy Advance games, or [SameBoy](https://sameboy.github.io/) for Game Boy
+and Game Boy Color games. You can also choose a different emulator executable
+when prompted.
+
+The **Data** page contains the full original FlashGBX interface, including ROM
+backup and flashing, save backup/restore, flash-cartridge analysis, dump reports,
+firmware tools, the Game Boy Camera viewer, and advanced settings. Playing never
+writes to the physical cartridge. Emulator save files currently remain in the
+private play cache; use Data when you explicitly want to restore a save to a
+cartridge.
+
+See [MODIFICATIONS.md](MODIFICATIONS.md) for implementation notes and scope.
+
 for Windows, Linux, macOS (→ [Download](#downloads))
 
 <img src="https://raw.githubusercontent.com/Lesserkuma/FlashGBX/master/.github/01.png" alt="FlashGBX on Windows 11" width="500"><br><img src="https://raw.githubusercontent.com/Lesserkuma/FlashGBX/master/.github/02.png" alt="GB Camera Album Viewer" width="500">
