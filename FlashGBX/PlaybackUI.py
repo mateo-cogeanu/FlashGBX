@@ -137,11 +137,12 @@ class PlaybackShell(QtWidgets.QWidget):
 		self.play_button.setEnabled(False)
 		copy.addWidget(self.play_button)
 
-		refresh = QtWidgets.QPushButton("Refresh cartridge")
-		refresh.setObjectName("quietButton")
-		refresh.setCursor(QtCore.Qt.PointingHandCursor)
-		refresh.clicked.connect(self.host.ReadCartridge)
-		copy.addWidget(refresh)
+		self.refresh_button = QtWidgets.QPushButton("Refresh cartridge")
+		self.refresh_button.setObjectName("quietButton")
+		self.refresh_button.setCursor(QtCore.Qt.PointingHandCursor)
+		# clicked(bool) must not feed False into ReadCartridge(resetStatus=True).
+		self.refresh_button.clicked.connect(lambda _checked=False: self.host.ReadCartridge())
+		copy.addWidget(self.refresh_button)
 		copy.addStretch()
 		card_layout.addLayout(copy, 1)
 		outer.addWidget(card, 1)
